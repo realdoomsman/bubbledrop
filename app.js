@@ -522,9 +522,9 @@ async function executeAirdrop() {
         addLog(log, `Swapping ${solAmount} SOL for ${tokenMetadata.symbol || 'tokens'}...`, 'info');
         updateProgress(10);
 
-        const feeReserve = 0.003; // Only reserve 0.003 SOL for all tx fees (~6 txs)
+        const feeReserve = 0.01; // Reserve 0.01 SOL for tx fees
         const swapAmount = Math.floor((solAmount - feeReserve) * LAMPORTS_PER_SOL);
-        const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${tokenMint.toBase58()}&amount=${swapAmount}&slippageBps=100`; // 1% slippage (cheap)
+        const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${tokenMint.toBase58()}&amount=${swapAmount}&slippageBps=500`;
         
         addLog(log, 'Fetching swap quote from Jupiter...', 'info');
         const quoteResp = await fetch(quoteUrl);
