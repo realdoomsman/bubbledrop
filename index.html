@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BubbleDrop — Solana Holder Airdrop Tool</title>
+    <meta name="description" content="Airdrop tokens to top holders of any Solana coin. Scan holders, buy supply, and distribute automatically.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Animated background -->
+    <div class="bg-grid"></div>
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+    <div class="bg-glow bg-glow-3"></div>
+
+    <!-- Header -->
+    <header id="app-header">
+        <div class="header-inner">
+            <div class="logo">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 32 32" fill="none">
+                        <circle cx="16" cy="16" r="14" stroke="url(#logoGrad)" stroke-width="2.5"/>
+                        <circle cx="16" cy="16" r="8" fill="url(#logoGrad)" opacity="0.3"/>
+                        <circle cx="16" cy="16" r="4" fill="url(#logoGrad)"/>
+                        <defs>
+                            <linearGradient id="logoGrad" x1="0" y1="0" x2="32" y2="32">
+                                <stop stop-color="#00FFA3"/>
+                                <stop offset="1" stop-color="#DC1FFF"/>
+                            </linearGradient>
+                        </defs>
+                    </svg>
+                </div>
+                <span class="logo-text">Bubble<span class="logo-accent">Drop</span></span>
+            </div>
+            <div class="header-status">
+                <div class="status-dot" id="networkDot"></div>
+                <span class="status-text" id="networkStatus">Connecting...</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main App Container -->
+    <main id="app-main">
+        <!-- Step Indicator -->
+        <div class="steps-bar">
+            <div class="step-item active" data-step="1">
+                <div class="step-num">1</div>
+                <span>Scan Token</span>
+            </div>
+            <div class="step-line"></div>
+            <div class="step-item" data-step="2">
+                <div class="step-num">2</div>
+                <span>Select Holders</span>
+            </div>
+            <div class="step-line"></div>
+            <div class="step-item" data-step="3">
+                <div class="step-num">3</div>
+                <span>Setup Wallet</span>
+            </div>
+            <div class="step-line"></div>
+            <div class="step-item" data-step="4">
+                <div class="step-num">4</div>
+                <span>Fund & Execute</span>
+            </div>
+        </div>
+
+        <!-- STEP 1: Token Input -->
+        <section class="step-panel active" id="step1">
+            <div class="panel-card">
+                <div class="panel-header">
+                    <div class="panel-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2>Scan Token Holders</h2>
+                        <p class="panel-subtitle">Enter the token mint address to fetch the top 50 holders</p>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="tokenAddress">Token Mint Address</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="tokenAddress" placeholder="e.g. EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" spellcheck="false" autocomplete="off">
+                        <button class="input-btn" id="pasteBtn" title="Paste from clipboard">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- RPC Selection -->
+                <div class="input-group">
+                    <label for="rpcSelect">RPC Endpoint</label>
+                    <div class="select-wrapper">
+                        <select id="rpcSelect">
+                            <option value="helius">Helius (Free — Recommended)</option>
+                            <option value="custom">Custom RPC URL</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="input-group" id="heliusKeyGroup">
+                    <label for="heliusKey">Helius API Key <span style="opacity:0.5;text-transform:none;font-weight:400">(free at helius.dev)</span></label>
+                    <div class="input-wrapper">
+                        <input type="text" id="heliusKey" placeholder="Paste your free Helius API key" spellcheck="false" autocomplete="off">
+                    </div>
+                    <p class="input-hint">Get a free key at <a href="https://dev.helius.xyz" target="_blank" rel="noopener" style="color:var(--green)">helius.dev</a> — takes 30 seconds. Gives you 50 req/sec.</p>
+                </div>
+                <div class="input-group hidden" id="customRpcGroup">
+                    <label for="customRpc">Custom RPC URL</label>
+                    <input type="text" id="customRpc" placeholder="https://your-rpc-endpoint.com">
+                </div>
+
+                <button class="btn-primary" id="scanBtn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                    Scan Holders
+                </button>
+
+                <!-- Loading State -->
+                <div class="scan-loading hidden" id="scanLoading">
+                    <div class="loader-ring"></div>
+                    <p>Scanning blockchain for top holders...</p>
+                </div>
+
+                <!-- Token Info Preview -->
+                <div class="token-info hidden" id="tokenInfo">
+                    <div class="token-info-header">
+                        <div class="token-avatar" id="tokenAvatar">?</div>
+                        <div class="token-meta">
+                            <h3 id="tokenName">Token Name</h3>
+                            <p class="token-symbol" id="tokenSymbol">SYMBOL</p>
+                        </div>
+                    </div>
+                    <div class="token-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Supply</span>
+                            <span class="stat-value" id="tokenSupply">—</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Decimals</span>
+                            <span class="stat-value" id="tokenDecimals">—</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Holders Found</span>
+                            <span class="stat-value" id="holdersFound">—</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- STEP 2: Select Holders -->
+        <section class="step-panel" id="step2">
+            <div class="panel-card">
+                <div class="panel-header">
+                    <div class="panel-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2>Select Airdrop Recipients</h2>
+                        <p class="panel-subtitle">Choose how many top holders to receive the airdrop</p>
+                    </div>
+                </div>
+
+                <!-- Holder Count Slider -->
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <label>Number of Recipients</label>
+                        <div class="slider-value-display">
+                            <span id="holderCountDisplay">25</span>
+                            <span class="slider-max">/ 50</span>
+                        </div>
+                    </div>
+                    <input type="range" id="holderCount" min="1" max="50" value="25" class="range-slider">
+                    <div class="slider-labels">
+                        <span>1</span>
+                        <span>25</span>
+                        <span>50</span>
+                    </div>
+                </div>
+
+                <!-- Holders Table -->
+                <div class="holders-table-wrap">
+                    <div class="table-header-row">
+                        <span class="col-rank">#</span>
+                        <span class="col-address">Wallet Address</span>
+                        <span class="col-balance">Balance</span>
+                        <span class="col-pct">% Supply</span>
+                        <span class="col-status">Status</span>
+                    </div>
+                    <div class="table-body" id="holdersTableBody">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <div class="step-actions">
+                    <button class="btn-secondary" id="backToStep1">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+                        Back
+                    </button>
+                    <button class="btn-primary" id="goToStep3">
+                        Continue
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- STEP 3: Wallet Setup -->
+        <section class="step-panel" id="step3">
+            <div class="panel-card">
+                <div class="panel-header">
+                    <div class="panel-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2>Setup Airdrop Wallet</h2>
+                        <p class="panel-subtitle">Create a new wallet or use a previously saved one</p>
+                    </div>
+                </div>
+
+                <!-- Wallet Tabs -->
+                <div class="wallet-tabs">
+                    <button class="wallet-tab active" data-tab="new">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                        Create New
+                    </button>
+                    <button class="wallet-tab" data-tab="existing">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                        Use Existing
+                    </button>
+                </div>
+
+                <!-- New Wallet Panel -->
+                <div class="wallet-panel active" id="newWalletPanel">
+                    <button class="btn-outline" id="generateWalletBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                        Generate New Wallet
+                    </button>
+
+                    <div class="wallet-details hidden" id="newWalletDetails">
+                        <div class="wallet-address-box">
+                            <label>Public Key</label>
+                            <div class="copyable-field">
+                                <code id="newWalletPubkey">—</code>
+                                <button class="copy-btn" data-copy="newWalletPubkey" title="Copy">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="wallet-warning">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                            <div>
+                                <strong>Private key saved locally</strong>
+                                <p>Your private key is stored in your browser's local storage. Never share it with anyone.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Existing Wallet Panel -->
+                <div class="wallet-panel" id="existingWalletPanel">
+                    <div class="saved-wallets" id="savedWalletsList">
+                        <p class="empty-state">No saved wallets found. Create a new one first.</p>
+                    </div>
+                </div>
+
+                <div class="step-actions">
+                    <button class="btn-secondary" id="backToStep2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+                        Back
+                    </button>
+                    <button class="btn-primary disabled" id="goToStep4">
+                        Continue
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- STEP 4: Fund & Execute -->
+        <section class="step-panel" id="step4">
+            <div class="panel-card">
+                <div class="panel-header">
+                    <div class="panel-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2>Fund & Execute Airdrop</h2>
+                        <p class="panel-subtitle">Send SOL to your airdrop wallet, then execute the distribution</p>
+                    </div>
+                </div>
+
+                <!-- Summary Card -->
+                <div class="summary-card">
+                    <h3>Airdrop Summary</h3>
+                    <div class="summary-grid">
+                        <div class="summary-item">
+                            <span class="summary-label">Token</span>
+                            <span class="summary-value" id="summaryToken">—</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Recipients</span>
+                            <span class="summary-value" id="summaryRecipients">—</span>
+                        </div>
+                        <div class="summary-item">
+                            <span class="summary-label">Airdrop Wallet</span>
+                            <span class="summary-value mono" id="summaryWallet">—</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Funding Section -->
+                <div class="funding-section">
+                    <div class="funding-header">
+                        <h3>Step 1: Fund the Wallet</h3>
+                        <div class="balance-badge">
+                            <span>Balance:</span>
+                            <strong id="walletBalance">0.000</strong>
+                            <span>SOL</span>
+                            <button class="refresh-btn" id="refreshBalanceBtn" title="Refresh balance">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <p class="funding-desc">Send at least <strong>0.1 SOL</strong> to the wallet address below. This SOL will be used to purchase the token and pay for transaction fees.</p>
+                    <div class="copyable-field large">
+                        <code id="fundingAddress">—</code>
+                        <button class="copy-btn" data-copy="fundingAddress" title="Copy">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                        </button>
+                    </div>
+
+                    <!-- SOL Amount Input -->
+                    <div class="input-group" style="margin-top: 1rem;">
+                        <label for="solAmount">SOL Amount to Use for Purchase</label>
+                        <div class="input-wrapper">
+                            <input type="number" id="solAmount" value="0.1" min="0.01" step="0.01" placeholder="0.1">
+                            <span class="input-suffix">SOL</span>
+                        </div>
+                        <p class="input-hint">A small amount (~0.01 SOL) will be reserved for transaction fees.</p>
+                    </div>
+                </div>
+
+                <!-- Execute Section -->
+                <div class="execute-section">
+                    <h3>Step 2: Execute Airdrop</h3>
+                    <p class="execute-desc">Once funded, click below to buy the token and distribute it evenly to the selected holders.</p>
+
+                    <button class="btn-execute" id="executeBtn" disabled>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        Execute Airdrop
+                    </button>
+                </div>
+
+                <!-- Progress Section -->
+                <div class="progress-section hidden" id="progressSection">
+                    <div class="progress-header">
+                        <h3>Airdrop Progress</h3>
+                        <span class="progress-pct" id="progressPct">0%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <div class="progress-log" id="progressLog">
+                        <!-- Log entries added by JS -->
+                    </div>
+                </div>
+
+                <!-- Completion -->
+                <div class="completion-section hidden" id="completionSection">
+                    <div class="completion-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+                    </div>
+                    <h3>Airdrop Complete!</h3>
+                    <p>Successfully distributed tokens to <span id="completedCount">0</span> holders.</p>
+                    <div class="completion-txs" id="completionTxs">
+                        <!-- Transaction links -->
+                    </div>
+                </div>
+
+                <div class="step-actions">
+                    <button class="btn-secondary" id="backToStep3">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m15 18-6-6 6-6"/></svg>
+                        Back
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/@solana/web3.js@1.95.8/lib/index.iife.min.js"></script>
+    <script src="https://unpkg.com/bs58@6.0.0/dist/index.umd.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
