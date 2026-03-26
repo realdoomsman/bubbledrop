@@ -522,8 +522,9 @@ async function executeAirdrop() {
         addLog(log, `Swapping ${solAmount} SOL for ${tokenMetadata.symbol || 'tokens'}...`, 'info');
         updateProgress(10);
 
-        const swapAmount = Math.floor((solAmount - 0.01) * LAMPORTS_PER_SOL); // Reserve 0.01 SOL for fees
-        const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${tokenMint.toBase58()}&amount=${swapAmount}&slippageBps=500`;
+        const feeReserve = 0.003; // Only reserve 0.003 SOL for all tx fees (~6 txs)
+        const swapAmount = Math.floor((solAmount - feeReserve) * LAMPORTS_PER_SOL);
+        const quoteUrl = `https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${tokenMint.toBase58()}&amount=${swapAmount}&slippageBps=100`; // 1% slippage (cheap)
         
         addLog(log, 'Fetching swap quote from Jupiter...', 'info');
         const quoteResp = await fetch(quoteUrl);
@@ -540,8 +541,8 @@ async function executeAirdrop() {
         addLog(log, `Quote: will receive ~${(outAmount / Math.pow(10, tokenDecimals)).toFixed(4)} tokens`, 'success');
         updateProgress(20);
 
-        // Get swap transaction
-        addLog(log, 'Building swap transaction...', 'info');
+        // Get swap transaction with minimal priority fee
+        addLog(log, 'Building swap transaction (low fee mode)...', 'info');
         const swapResp = await fetch('https://quote-api.jup.ag/v6/swap', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -550,7 +551,12 @@ async function executeAirdrop() {
                 userPublicKey: keypair.publicKey.toBase58(),
                 wrapAndUnwrapSol: true,
                 dynamicComputeUnitLimit: true,
-                prioritizationFeeLamports: 'auto'
+                prioritizationFeeLamports: {
+                    priorityLevelWithMaxLamports: {
+                        maxLamports: 1000, // Max 0.000001 SOL priority fee
+                        priorityLevel: 'low'
+                    }
+                }
             })
         });
 
@@ -612,12 +618,14 @@ async function executeAirdrop() {
         const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 
         const txSignatures = [];
-        const batchSize = 5; // Send to 5 holders per transaction
+        const batchSize = 8; // 8 holders per tx = fewer total txs = less fees
         const batches = [];
 
         for (let i = 0; i < recipients.length; i += batchSize) {
             batches.push(recipients.slice(i, i + batchSize));
         }
+
+        addLog(log, `Using ${batches.length} transactions (${batchSize} per batch, low-fee mode)`, 'info');
 
         for (let b = 0; b < batches.length; b++) {
             const batch = batches[b];
@@ -630,6 +638,27 @@ async function executeAirdrop() {
                 const { blockhash } = await connection.getLatestBlockhash();
                 tx.recentBlockhash = blockhash;
                 tx.feePayer = keypair.publicKey;
+
+                // Add ComputeBudget instructions for minimal fees
+                // SetComputeUnitLimit — cap at 200,000 CUs (instead of default 1.4M)
+                const computeLimitData = Buffer.alloc(5);
+                computeLimitData.writeUInt8(2, 0); // instruction index
+                computeLimitData.writeUInt32LE(200000, 1);
+                tx.add(new solanaWeb3.TransactionInstruction({
+                    keys: [],
+                    programId: new PublicKey('ComputeBudget111111111111111111111111111111'),
+                    data: computeLimitData
+                }));
+
+                // SetComputeUnitPrice — 1 microlamport per CU (basically free)
+                const computePriceData = Buffer.alloc(9);
+                computePriceData.writeUInt8(3, 0); // instruction index
+                computePriceData.writeBigUInt64LE(BigInt(1), 1); // 1 microlamport
+                tx.add(new solanaWeb3.TransactionInstruction({
+                    keys: [],
+                    programId: new PublicKey('ComputeBudget111111111111111111111111111111'),
+                    data: computePriceData
+                }));
 
                 for (const recipient of batch) {
                     const recipientPubkey = new PublicKey(recipient.owner);
