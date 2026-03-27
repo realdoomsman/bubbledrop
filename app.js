@@ -618,31 +618,32 @@ async function executeAirdrop() {
         const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
 
         const txSignatures = [];
-        const batchSize = 8; // 8 holders per tx = fewer total txs = less fees
+        const batchSize = 8; // 8 holders per tx = fewer total txs
         const batches = [];
 
         for (let i = 0; i < recipients.length; i += batchSize) {
             batches.push(recipients.slice(i, i + batchSize));
         }
 
-        addLog(log, `Using ${batches.length} transactions (${batchSize} per batch, low-fee mode)`, 'info');
+        addLog(log, `Bundling ${batches.length} transactions into single block...`, 'info');
 
+        // Step 4a: Get ONE blockhash for all txs (same block target)
+        const { blockhash } = await connection.getLatestBlockhash();
+
+        // Step 4b: Build ALL transactions upfront
+        const signedTxs = [];
         for (let b = 0; b < batches.length; b++) {
             const batch = batches[b];
-            const pct = 55 + ((b + 1) / batches.length) * 40;
-
-            addLog(log, `Sending batch ${b + 1}/${batches.length} (${batch.length} recipients)...`, 'info');
+            addLog(log, `Building batch ${b + 1}/${batches.length} (${batch.length} recipients)...`, 'info');
 
             try {
                 const tx = new Transaction();
-                const { blockhash } = await connection.getLatestBlockhash();
                 tx.recentBlockhash = blockhash;
                 tx.feePayer = keypair.publicKey;
 
-                // Add ComputeBudget instructions for minimal fees
-                // SetComputeUnitLimit — cap at 200,000 CUs (instead of default 1.4M)
+                // ComputeBudget: cap at 200K CUs
                 const computeLimitData = Buffer.alloc(5);
-                computeLimitData.writeUInt8(2, 0); // instruction index
+                computeLimitData.writeUInt8(2, 0);
                 computeLimitData.writeUInt32LE(200000, 1);
                 tx.add(new solanaWeb3.TransactionInstruction({
                     keys: [],
@@ -650,10 +651,10 @@ async function executeAirdrop() {
                     data: computeLimitData
                 }));
 
-                // SetComputeUnitPrice — 1 microlamport per CU (basically free)
+                // ComputeBudget: 1 microlamport/CU priority
                 const computePriceData = Buffer.alloc(9);
-                computePriceData.writeUInt8(3, 0); // instruction index
-                computePriceData.writeBigUInt64LE(BigInt(1), 1); // 1 microlamport
+                computePriceData.writeUInt8(3, 0);
+                computePriceData.writeBigUInt64LE(BigInt(1), 1);
                 tx.add(new solanaWeb3.TransactionInstruction({
                     keys: [],
                     programId: new PublicKey('ComputeBudget111111111111111111111111111111'),
@@ -662,14 +663,10 @@ async function executeAirdrop() {
 
                 for (const recipient of batch) {
                     const recipientPubkey = new PublicKey(recipient.owner);
-
-                    // Get or create associated token account
                     const recipientATA = await getAssociatedTokenAddress(recipientPubkey, tokenMint);
                     
-                    // Check if ATA exists
                     const ataInfo = await connection.getAccountInfo(recipientATA);
                     if (!ataInfo) {
-                        // Create ATA instruction
                         tx.add(createAssociatedTokenAccountInstruction(
                             keypair.publicKey,
                             recipientATA,
@@ -678,7 +675,6 @@ async function executeAirdrop() {
                         ));
                     }
 
-                    // Transfer tokens
                     tx.add(createTransferInstruction(
                         myTokenAccount.pubkey,
                         recipientATA,
@@ -688,22 +684,52 @@ async function executeAirdrop() {
                 }
 
                 tx.sign(keypair);
+                signedTxs.push({ tx, batchIndex: b });
+            } catch (buildErr) {
+                addLog(log, `Failed to build batch ${b + 1}: ${buildErr.message}`, 'error');
+            }
+
+            updateProgress(55 + ((b + 1) / batches.length) * 15);
+        }
+
+        // Step 4c: Fire ALL transactions simultaneously (same block bundle)
+        addLog(log, `🚀 Firing ${signedTxs.length} transactions simultaneously...`, 'info');
+        updateProgress(70);
+
+        const sendPromises = signedTxs.map(async ({ tx, batchIndex }) => {
+            try {
                 const sig = await connection.sendRawTransaction(tx.serialize(), {
                     skipPreflight: true,
                     maxRetries: 3
                 });
-
-                await connection.confirmTransaction(sig, 'confirmed');
-                txSignatures.push(sig);
-                addLog(log, `Batch ${b + 1} confirmed: ${sig.slice(0, 16)}...`, 'success');
-
-            } catch (batchErr) {
-                addLog(log, `Batch ${b + 1} failed: ${batchErr.message}`, 'error');
+                addLog(log, `Batch ${batchIndex + 1} sent: ${sig.slice(0, 16)}...`, 'success');
+                return { sig, batchIndex, error: null };
+            } catch (sendErr) {
+                addLog(log, `Batch ${batchIndex + 1} send failed: ${sendErr.message}`, 'error');
+                return { sig: null, batchIndex, error: sendErr.message };
             }
+        });
 
-            updateProgress(Math.round(pct));
-            await sleep(500);
-        }
+        const sendResults = await Promise.all(sendPromises);
+        updateProgress(80);
+
+        // Step 4d: Confirm ALL at once
+        addLog(log, 'Waiting for all confirmations...', 'info');
+
+        const confirmPromises = sendResults
+            .filter(r => r.sig)
+            .map(async ({ sig, batchIndex }) => {
+                try {
+                    await connection.confirmTransaction(sig, 'confirmed');
+                    txSignatures.push(sig);
+                    addLog(log, `Batch ${batchIndex + 1} confirmed ✓`, 'success');
+                } catch (confErr) {
+                    addLog(log, `Batch ${batchIndex + 1} confirmation failed: ${confErr.message}`, 'error');
+                }
+            });
+
+        await Promise.all(confirmPromises);
+        updateProgress(95);
 
         // Complete!
         updateProgress(100);
